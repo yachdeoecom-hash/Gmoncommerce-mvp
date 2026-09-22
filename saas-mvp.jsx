@@ -40,22 +40,40 @@ function uid(prefix) {
 }
 
 // ============================================================
-// COUCHE PERSISTANCE — window.storage, clés préfixées par tenant
-// (remplace localStorage, indisponible dans cet environnement ;
-//  window.storage persiste réellement côté serveur, donc survit
-//  aussi bien à un redémarrage qu'à un changement d'appareil)
+// COUCHE PERSISTANCE — Supabase (table kv_store), partagée entre
+// tous les appareils : le QG (ton téléphone) voit en quasi temps
+// réel ce qui se passe sur l'appareil du commerçant.
 // ============================================================
+const SUPABASE_URL = "https://xaizqcfbstzemtdmnmfp.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_SQ2KEktSwZoHmDQC-G9Iog_1XEiCa91";
+
+const sbHeaders = {
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  "Content-Type": "application/json",
+};
+
 async function loadJSON(key, fallback) {
   try {
-    const res = await window.storage.get(key);
-    return res ? JSON.parse(res.value) : fallback;
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`,
+      { headers: sbHeaders }
+    );
+    if (!res.ok) return fallback;
+    const rows = await res.json();
+    return rows.length > 0 ? rows[0].value : fallback;
   } catch {
     return fallback;
   }
 }
+
 async function saveJSON(key, value) {
   try {
-    await window.storage.set(key, JSON.stringify(value));
+    await fetch(`${SUPABASE_URL}/rest/v1/kv_store`, {
+      method: "POST",
+      headers: { ...sbHeaders, Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+    });
   } catch (e) {
     console.error("Erreur de sauvegarde", e);
   }
